@@ -1,37 +1,33 @@
-#include <ESP32Servo.h>
+#include <Arduino.h>
 
-Servo servo1;
-Servo servo2;
-Servo servo3;
-Servo servo4;
-Servo servo5;
+#include "AppConfig.h"
+#include "NetworkManager.h"
+#include "ServoManager.h"
+#include "WebControlServer.h"
 
-void setup() {
-  servo1.attach(14); //claw
-  servo2.attach(12);
-  servo3.attach(25);
-  servo4.attach(26);
-  servo5.attach(27);
-
-  servo1.write(90);
-  servo2.write(0);
-  servo3.write(0);
-  servo4.write(0);
-  servo5.write(0);
+namespace
+{
+  robotarm::ServoManager servoManager;
+  robotarm::NetworkManager networkManager;
+  robotarm::WebControlServer controlServer(servoManager, networkManager);
 }
 
-void loop() {
-  delay(6000);
-  // servo1.write(180);
-  // servo2.write(180);
-  // servo3.write(180);
-  // servo4.write(180);
-  // servo5.write(180);
+void setup()
+{
+  Serial.begin(115200);
+  delay(500);
 
-  delay(2000);
-  // servo1.write(0);
-  // servo2.write(0);
-  // servo3.write(0);
-  // servo4.write(0);
-  // servo5.write(0);
+  servoManager.begin();
+  networkManager.begin(robotarm::kWifiConfig);
+  controlServer.begin();
+
+  Serial.println();
+  Serial.printf("Mode: %s\n", networkManager.isAccessPointMode() ? "AP" : "WiFi");
+  Serial.printf("Network: %s\n", networkManager.activeNetworkName().c_str());
+  Serial.printf("Control URL: http://%s\n", networkManager.activeIpAddress().c_str());
+}
+
+void loop()
+{
+  controlServer.handleClient();
 }
