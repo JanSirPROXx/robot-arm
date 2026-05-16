@@ -10,215 +10,229 @@ namespace robotarm
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Robotic Arm Control</title>
   <style>
-    :root {
-      --bg: #f4efe7;
-      --panel: #fffaf3;
-      --line: #d9ccb7;
-      --text: #1f1b16;
-      --muted: #6d6356;
-      --accent: #bc5f2d;
-      --accent-dark: #8f451f;
-    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(188, 95, 45, 0.18), transparent 24rem),
-        linear-gradient(180deg, #f8f3eb 0%, var(--bg) 100%);
-      min-height: 100vh;
-    }
-    .wrap {
-      width: min(56rem, calc(100% - 2rem));
-      margin: 0 auto;
-      padding: 2rem 0 3rem;
-    }
-    .hero {
-      display: grid;
-      gap: 0.5rem;
-      padding: 1.5rem;
-      border: 1px solid rgba(31, 27, 22, 0.08);
-      border-radius: 1.5rem;
-      background: rgba(255, 250, 243, 0.8);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 1rem 2rem rgba(71, 49, 31, 0.08);
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(1.8rem, 5vw, 3.4rem);
-      line-height: 0.95;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    .sub, .status {
-      margin: 0;
-      color: var(--muted);
-    }
-    .grid {
-      display: grid;
-      gap: 1rem;
-      margin-top: 1.5rem;
-    }
-    .card {
       padding: 1rem;
-      border-radius: 1.25rem;
-      border: 1px solid var(--line);
-      background: var(--panel);
-      box-shadow: 0 0.5rem 1.5rem rgba(71, 49, 31, 0.06);
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      color: #111;
+      background: #fff;
     }
-    .card-head {
+    .wrap { max-width: 40rem; margin: 0 auto; }
+    .row {
       display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 1rem;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .row label { min-width: 4rem; }
+    input[type="range"] { flex: 1; }
+    input[type="number"] {
+      width: 4rem;
+      padding: 0.25rem;
+      font: inherit;
+      border: 1px solid #999;
+    }
+    .servo {
+      border: 1px solid #ccc;
+      padding: 0.75rem;
       margin-bottom: 0.75rem;
     }
-    .card h2 {
-      margin: 0;
-      font-size: 1.15rem;
+    .servo h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
     }
-    .value {
-      color: var(--accent-dark);
-      font-weight: 700;
-      min-width: 4.5rem;
-      text-align: right;
-    }
-    .meta {
-      margin: 0 0 0.75rem;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-    .controls {
+    .btns {
       display: grid;
-      gap: 0.75rem;
-      grid-template-columns: minmax(0, 1fr) 5.5rem;
-      align-items: center;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
     }
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--accent);
-    }
-    input[type="number"] {
-      width: 100%;
-      padding: 0.65rem 0.75rem;
-      border-radius: 0.8rem;
-      border: 1px solid var(--line);
-      background: #fff;
+    button {
+      padding: 0.5rem;
       font: inherit;
-      color: inherit;
+      border: 1px solid #999;
+      background: #f5f5f5;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
     }
-    .footer {
-      margin-top: 1rem;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
+    button.active, button:active { background: #ddd; }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <section class="hero">
-      <p class="sub">On-device control panel</p>
-      <h1>Robotic Arm</h1>
-      <p class="status" id="network">Loading connection details...</p>
-    </section>
-    <section class="grid" id="servoGrid"></section>
-    <p class="footer">Edit the servo names, pins, and limits in <code>src/AppConfig.cpp</code>.</p>
+    <div class="row">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="10" max="180" step="1" value="60">
+      <span><span id="speedVal">60</span>&deg;/s</span>
+    </div>
+    <div id="servoGrid"></div>
   </main>
   <script>
-    const networkEl = document.getElementById("network");
     const gridEl = document.getElementById("servoGrid");
+    const speedEl = document.getElementById("speed");
+    const speedValEl = document.getElementById("speedVal");
+
+    const cards = new Map();
+    let speedInteracting = false;
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
     }
 
-    async function setServo(id, angle) {
-      const response = await fetch(`/set?servo=${id}&angle=${angle}`);
-      if (!response.ok) {
-        throw new Error("Servo update failed");
+    async function postCommand(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Request failed: " + response.status);
+        return await response.json();
+      } catch (err) {
+        console.error(err);
+        return null;
       }
     }
 
-    function attachServoEvents(slider, number, valueLabel, servo) {
-      const sync = (value) => {
-        const angle = clamp(Number(value), servo.minAngle, servo.maxAngle);
-        slider.value = angle;
-        number.value = angle;
-        valueLabel.textContent = `${angle} deg`;
-        return angle;
+    function attachHoldButton(btn, servoId, direction) {
+      let pressed = false;
+      const start = (event) => {
+        event.preventDefault();
+        if (pressed) return;
+        pressed = true;
+        btn.classList.add("active");
+        try { btn.setPointerCapture(event.pointerId); } catch (_) {}
+        postCommand(`/move?servo=${servoId}&dir=${direction}`);
       };
-
-      slider.addEventListener("input", () => {
-        sync(slider.value);
-      });
-
-      slider.addEventListener("change", async () => {
-        const angle = sync(slider.value);
-        await setServo(servo.id, angle);
-      });
-
-      number.addEventListener("change", async () => {
-        const angle = sync(number.value);
-        await setServo(servo.id, angle);
-      });
+      const stop = (event) => {
+        if (!pressed) return;
+        pressed = false;
+        btn.classList.remove("active");
+        if (event && event.pointerId !== undefined) {
+          try { btn.releasePointerCapture(event.pointerId); } catch (_) {}
+        }
+        postCommand(`/move?servo=${servoId}&dir=0`);
+      };
+      btn.addEventListener("pointerdown", start);
+      btn.addEventListener("pointerup", stop);
+      btn.addEventListener("pointercancel", stop);
+      btn.addEventListener("pointerleave", stop);
+      btn.addEventListener("contextmenu", (e) => e.preventDefault());
     }
 
-    function renderServo(servo) {
-      const card = document.createElement("article");
-      card.className = "card";
-
-      const header = document.createElement("div");
-      header.className = "card-head";
+    function buildCard(servo) {
+      const card = document.createElement("div");
+      card.className = "servo";
 
       const title = document.createElement("h2");
       title.textContent = servo.name;
 
-      const valueLabel = document.createElement("div");
-      valueLabel.className = "value";
-      valueLabel.textContent = `${servo.angle} deg`;
+      const btns = document.createElement("div");
+      btns.className = "btns";
+      const backBtn = document.createElement("button");
+      backBtn.type = "button";
+      backBtn.textContent = "-";
+      const fwdBtn = document.createElement("button");
+      fwdBtn.type = "button";
+      fwdBtn.textContent = "+";
+      btns.append(backBtn, fwdBtn);
 
-      header.append(title, valueLabel);
-
-      const meta = document.createElement("p");
-      meta.className = "meta";
-      meta.textContent = `GPIO ${servo.pin} - Range ${servo.minAngle} to ${servo.maxAngle} deg`;
-
-      const controls = document.createElement("div");
-      controls.className = "controls";
-
+      const row = document.createElement("div");
+      row.className = "row";
       const slider = document.createElement("input");
       slider.type = "range";
       slider.min = servo.minAngle;
       slider.max = servo.maxAngle;
-      slider.value = servo.angle;
-
+      slider.value = servo.target;
       const number = document.createElement("input");
       number.type = "number";
       number.min = servo.minAngle;
       number.max = servo.maxAngle;
-      number.value = servo.angle;
+      number.value = servo.target;
+      row.append(slider, number);
 
-      controls.append(slider, number);
-      card.append(header, meta, controls);
-      attachServoEvents(slider, number, valueLabel, servo);
-      return card;
+      card.append(title, btns, row);
+
+      attachHoldButton(backBtn, servo.id, -1);
+      attachHoldButton(fwdBtn, servo.id, 1);
+
+      let sliderInteracting = false;
+      slider.addEventListener("pointerdown", () => { sliderInteracting = true; });
+      slider.addEventListener("input", () => {
+        number.value = clamp(Number(slider.value), servo.minAngle, servo.maxAngle);
+      });
+      const commit = async () => {
+        sliderInteracting = false;
+        const angle = clamp(Number(slider.value), servo.minAngle, servo.maxAngle);
+        slider.value = angle;
+        number.value = angle;
+        await postCommand(`/set?servo=${servo.id}&angle=${angle}`);
+      };
+      slider.addEventListener("pointerup", commit);
+      slider.addEventListener("pointercancel", () => { sliderInteracting = false; });
+      slider.addEventListener("change", commit);
+
+      let numberInteracting = false;
+      number.addEventListener("focus", () => { numberInteracting = true; });
+      number.addEventListener("blur", () => { numberInteracting = false; });
+      number.addEventListener("change", async () => {
+        const angle = clamp(Number(number.value), servo.minAngle, servo.maxAngle);
+        number.value = angle;
+        slider.value = angle;
+        await postCommand(`/set?servo=${servo.id}&angle=${angle}`);
+        numberInteracting = false;
+      });
+
+      return {
+        card,
+        slider,
+        number,
+        isSliderActive: () => sliderInteracting,
+        isNumberActive: () => numberInteracting,
+      };
     }
 
-    async function loadStatus() {
-      const response = await fetch("/status");
-      const data = await response.json();
-      networkEl.textContent =
-        `${data.mode} mode on ${data.network} - open http://${data.ip}`;
-      gridEl.innerHTML = "";
-      data.servos.forEach((servo) => gridEl.appendChild(renderServo(servo)));
+    function applyStatus(data) {
+      if (!speedInteracting && typeof data.speed === "number") {
+        const rounded = Math.round(data.speed);
+        speedEl.value = rounded;
+        speedValEl.textContent = rounded;
+      }
+      data.servos.forEach((servo) => {
+        let entry = cards.get(servo.id);
+        if (!entry) {
+          entry = buildCard(servo);
+          cards.set(servo.id, entry);
+          gridEl.appendChild(entry.card);
+        }
+        if (!entry.isSliderActive()) entry.slider.value = servo.target;
+        if (!entry.isNumberActive()) entry.number.value = servo.target;
+      });
     }
 
-    loadStatus().catch((error) => {
-      networkEl.textContent = error.message;
+    async function refreshStatus() {
+      const data = await postCommand("/status");
+      if (data) applyStatus(data);
+    }
+
+    speedEl.addEventListener("pointerdown", () => { speedInteracting = true; });
+    speedEl.addEventListener("input", () => {
+      speedValEl.textContent = speedEl.value;
     });
+    const commitSpeed = async () => {
+      await postCommand(`/speed?value=${speedEl.value}`);
+      speedInteracting = false;
+    };
+    speedEl.addEventListener("change", commitSpeed);
+    speedEl.addEventListener("pointerup", commitSpeed);
+    speedEl.addEventListener("pointercancel", () => { speedInteracting = false; });
+
+    refreshStatus();
+    setInterval(() => {
+      if (document.visibilityState === "visible") refreshStatus();
+    }, 200);
   </script>
 </body>
 </html>)HTML");

@@ -21,6 +21,8 @@ namespace robotarm
     void handleRoot();
     void handleStatus();
     void handleSet();
+    void handleMove();
+    void handleSpeed();
 
     ServoManager &_servos;
     NetworkManager &_network;

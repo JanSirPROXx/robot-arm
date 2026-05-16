@@ -29,5 +29,6 @@ void setup()
 
 void loop()
 {
+  servoManager.update();
   controlServer.handleClient();
 }
