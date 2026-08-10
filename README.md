@@ -12,4 +12,4 @@ I made my own Robotic claw:
 
 All STL files I designed are in the [3dModels](3dModels/) folder (some may still be added later).
 
-This is a work in progress;
+
